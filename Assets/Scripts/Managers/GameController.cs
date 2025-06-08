@@ -13,6 +13,7 @@ public class GameController : MonoBehaviour
     [SerializeField] private GameObject finishUIPanel;
     [SerializeField] private ToggleGroup toggleGroup;
     [SerializeField] private Button btnStart;
+    [SerializeField] private Button btnLoad;
     [SerializeField] private Button btnHome;
     [SerializeField] private Button btnFinish;
     [SerializeField] private RectTransform cardParent;
@@ -24,11 +25,14 @@ public class GameController : MonoBehaviour
     private SoundManager sm;
 
     private List<Card> allCards = new List<Card>();
+    private List<int> matchedCardIds = new List<int>();
     private Card firstCard, secondCard;
     private int score = 0;
     private int turns = 0;
     private string levelName = "Easy";
     private bool inputLocked = false;
+    private GameSaveData loadedSaveData = null;
+
 
     private void Awake()
     {
@@ -36,6 +40,9 @@ public class GameController : MonoBehaviour
         sm = FindObjectOfType<SoundManager>();
         btnStart.onClick.AddListener(OnStartClicked);
         btnFinish.onClick.AddListener(onFinishClicked);
+        btnHome.onClick.AddListener(OnBackToHomeClicked);
+        btnLoad.onClick.AddListener(OnLoadGameClicked);
+        btnLoad.gameObject.SetActive(SaveSystem.HasSave() && SaveSystem.Load().cardIdOrder?.Count > 0);
     }
 
     private void Start()
@@ -43,6 +50,7 @@ public class GameController : MonoBehaviour
         HideAllPanels();
         menuUIPanel.SetActive(true);
         CheckActiveToggle();
+        btnLoad.gameObject.SetActive(SaveSystem.HasSave());
 
         foreach (var toggle in toggleGroup.GetComponentsInChildren<Toggle>())
         {
@@ -64,6 +72,7 @@ public class GameController : MonoBehaviour
 
     private void OnStartClicked()
     {
+        loadedSaveData = null;
         gameUIPanel.SetActive(true);
         sm.PlayEnter();
         StartCoroutine(GenerateCardGrid(levelName));
@@ -81,11 +90,87 @@ public class GameController : MonoBehaviour
         menuUIPanel.SetActive(true);
     }
 
+    private void OnBackToHomeClicked()
+    {
+        if (!allCards.All(c => c.isMatched))
+        {
+            SaveProgress();
+        }
+
+        gameUIPanel.SetActive(false);
+        menuUIPanel.SetActive(true);
+
+        // Clear current game state
+        firstCard = null;
+        secondCard = null;
+        allCards.Clear();
+
+        btnLoad.gameObject.SetActive(SaveSystem.HasSave() && SaveSystem.Load().cardIdOrder?.Count > 0);
+    }
+
+
+    private void SaveProgress()
+    {
+        GameSaveData data = new GameSaveData
+        {
+            score = score,
+            turnCount = turns,
+            level = levelName,
+            cardIdOrder = allCards.Select(c => c.cardIndex).ToList(),
+            matchedCardIndices = allCards
+                .Select((card, index) => new { card, index })
+                .Where(x => x.card.isMatched)
+                .Select(x => x.index)
+                .ToList()
+        };
+
+        SaveSystem.Save(data);
+        Debug.Log("Game Saved");
+        btnLoad.gameObject.SetActive(SaveSystem.HasSave() && SaveSystem.Load().cardIdOrder?.Count > 0);
+    }
+
+    private void OnLoadGameClicked()
+    {
+        loadedSaveData = SaveSystem.Load();
+        if (loadedSaveData == null) return;
+
+        // Set the loaded data
+        score = loadedSaveData.score;
+        turns = loadedSaveData.turnCount;
+        levelName = loadedSaveData.level;
+
+        // Update UI immediately
+        UpdateScore(score);
+        UpdateTurnUI();
+
+        // Set the correct toggle
+        SetActiveToggle(loadedSaveData.level);
+
+        btnLoad.gameObject.SetActive(false);
+        menuUIPanel.SetActive(false);
+        gameUIPanel.SetActive(true);
+
+        StartCoroutine(GenerateCardGrid(levelName));
+    }
+
+    private void SetActiveToggle(string levelName)
+    {
+        foreach (Toggle toggle in toggleGroup.GetComponentsInChildren<Toggle>())
+        {
+            toggle.isOn = toggle.name == levelName;
+        }
+    }
+
     private IEnumerator GenerateCardGrid(string level)
     {
         yield return new WaitForEndOfFrame();
-        turns = 0;
+        if (loadedSaveData == null)
+        {
+            turns = 0;
+            score = 0;
+        }
         UpdateTurnUI();
+        UpdateScore(score);
 
         // 1. Determine grid size
         int rows = 2, cols = 2;
@@ -99,27 +184,40 @@ public class GameController : MonoBehaviour
         int totalCards = rows * cols;
         int uniqueCount = totalCards / 2;
 
-        // 2. Validate SO pool
         if (cardDataList.Count < uniqueCount)
         {
             Debug.LogError($"Not enough CardScriptableObjects. Need at least {uniqueCount} for {level}.");
             yield break;
         }
 
-        // 3. Shuffle and pick unique pairs
-        List<CardScriptableObject> shuffledSO = cardDataList.OrderBy(x => Random.value).ToList();
-        List<CardScriptableObject> selectedPairs = shuffledSO.Take(uniqueCount).ToList();
+        List<CardScriptableObject> finalCardSet = new();
 
-        // 4. Duplicate and shuffle full deck
-        List<CardScriptableObject> finalCardSet = new List<CardScriptableObject>();
-        foreach (var card in selectedPairs)
+        if (loadedSaveData != null && loadedSaveData.cardIdOrder != null)
         {
-            finalCardSet.Add(card);
-            finalCardSet.Add(card);
+            foreach (int id in loadedSaveData.cardIdOrder)
+            {
+                var cardData = cardDataList.FirstOrDefault(c => c.id == id);
+                if (cardData != null)
+                    finalCardSet.Add(cardData);
+            }
         }
-        finalCardSet = finalCardSet.OrderBy(x => Random.value).ToList();
+        else
+        {
+            // Generate random deck for new game
+            List<CardScriptableObject> shuffledSO = cardDataList.OrderBy(x => Random.value).ToList();
+            List<CardScriptableObject> selectedPairs = shuffledSO.Take(uniqueCount).ToList();
 
-        // 5. Clear old cards
+            foreach (var card in selectedPairs)
+            {
+                finalCardSet.Add(card);
+                finalCardSet.Add(card);
+            }
+
+            finalCardSet = finalCardSet.OrderBy(x => Random.value).ToList();
+        }
+
+
+
         foreach (Transform child in cardParent)
             Destroy(child.gameObject);
 
@@ -151,19 +249,35 @@ public class GameController : MonoBehaviour
 
             GameObject go = Instantiate(cardPrefab, cardParent);
             RectTransform rt = go.GetComponent<RectTransform>();
-            rt.localScale = Vector3.zero; // start hidden
+            rt.localScale = Vector3.zero;
 
             Card card = go.GetComponent<Card>();
             card.Init(this, data.id, data.cardImage);
             allCards.Add(card);
 
             // Animate scale pop-in
-            float delay = i * 0.05f; // stagger each card slightly
+            float delay = i * 0.05f;
             rt.DOScale(Vector3.one, 0.3f).SetEase(Ease.OutBack).SetDelay(delay);
+
+            if (loadedSaveData != null && loadedSaveData.matchedCardIndices.Contains(i))
+            {
+                StartCoroutine(RestoreMatchedCard(card, delay + 0.3f));
+            }
         }
 
         UpdateScore(0);
     }
+
+    private IEnumerator RestoreMatchedCard(Card card, float delay)
+    {
+        yield return new WaitForSeconds(delay);
+
+        card.FlipOpen();
+        card.MarkMatched();
+
+        sm.PlayFlip();
+    }
+
 
 
     public void OnCardClicked(Card card)
@@ -203,6 +317,9 @@ public class GameController : MonoBehaviour
                 sm.PlayGameOver();
                 HideAllPanels();
                 finishUIPanel.SetActive(true);
+                SaveSystem.Clear();
+                loadedSaveData = null;
+                btnLoad.gameObject.SetActive(false);
             }
         }
         else
@@ -239,28 +356,26 @@ public class GameController : MonoBehaviour
     }
 }
 
-
 public static class SaveSystem
 {
-    const string KEY = "card_match_save";
+    private const string KEY = "CardMatchSave";
 
-    public static void Save(CardData data)
+    public static void Save(GameSaveData data)
     {
         string json = JsonUtility.ToJson(data);
         PlayerPrefs.SetString(KEY, json);
         PlayerPrefs.Save();
     }
 
-    public static CardData Load()
+    public static GameSaveData Load()
     {
         if (!PlayerPrefs.HasKey(KEY)) return null;
-        string json = PlayerPrefs.GetString(KEY);
-        return JsonUtility.FromJson<CardData>(json);
+        return JsonUtility.FromJson<GameSaveData>(PlayerPrefs.GetString(KEY));
     }
 
-    public static void Clear()
-    {
-        PlayerPrefs.DeleteKey(KEY);
-    }
+    public static bool HasSave() => PlayerPrefs.HasKey(KEY);
+
+    public static void Clear() => PlayerPrefs.DeleteKey(KEY);
 }
+
 

@@ -10,14 +10,14 @@ public class Card : MonoBehaviour
     public Sprite backSprite;
 
     private Image image;
-    private Button button;//edfgdfgdgf
+    private Button button;
     private GameController controller;
     private bool isFlipping = false;
 
     void Awake()
     {
-        image = this.transform.GetComponent<Image>();
-        button = this.transform.GetComponent<Button>();
+        image = GetComponent<Image>();
+        button = GetComponent<Button>();
         button.onClick.AddListener(onClickToFlip);
     }
 
