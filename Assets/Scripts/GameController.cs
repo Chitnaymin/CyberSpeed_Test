@@ -20,7 +20,7 @@ public class GameController : MonoBehaviour
     [SerializeField] private TMP_Text turnText;
 
     private List<CardScriptableObject> cardDataList;
-
+    private SoundManager sm;
 
     private List<Card> allCards = new List<Card>();
     private Card firstCard, secondCard;
@@ -32,7 +32,7 @@ public class GameController : MonoBehaviour
     private void Awake()
     {
         cardDataList = Resources.LoadAll<CardScriptableObject>("CardData").ToList();
-
+        sm = FindObjectOfType<SoundManager>();
         btnStart.onClick.AddListener(OnStartClicked);
         btnFinish.onClick.AddListener(onFinishClicked);
     }
@@ -64,7 +64,7 @@ public class GameController : MonoBehaviour
     private void OnStartClicked()
     {
         gameUIPanel.SetActive(true);
-
+        sm.PlayEnter();
         StartCoroutine(GenerateCardGrid(levelName));
         menuUIPanel.GetComponent<RectTransform>().DOAnchorPosY(1080, 0.5f).OnComplete(() =>
         {
@@ -85,7 +85,7 @@ public class GameController : MonoBehaviour
         turns = 0;
         UpdateTurnUI();
 
-        // 1. Set grid size based on difficulty
+        // 1. Determine grid size
         int rows = 2, cols = 2;
         switch (level)
         {
@@ -94,76 +94,70 @@ public class GameController : MonoBehaviour
             case "Hard": rows = 5; cols = 6; break;
         }
 
-        cardParent.GetComponent<GridLayoutGroup>().constraintCount = rows;
         int totalCards = rows * cols;
         int uniqueCount = totalCards / 2;
 
-        // 2. Validate available SOs
+        // 2. Validate SO pool
         if (cardDataList.Count < uniqueCount)
         {
             Debug.LogError($"Not enough CardScriptableObjects. Need at least {uniqueCount} for {level}.");
             yield break;
         }
 
-        // 3. Shuffle and pick unique SOs
+        // 3. Shuffle and pick unique pairs
         List<CardScriptableObject> shuffledSO = cardDataList.OrderBy(x => Random.value).ToList();
         List<CardScriptableObject> selectedPairs = shuffledSO.Take(uniqueCount).ToList();
 
-        // 4. Duplicate each SO to make pairs
+        // 4. Duplicate and shuffle full deck
         List<CardScriptableObject> finalCardSet = new List<CardScriptableObject>();
         foreach (var card in selectedPairs)
         {
             finalCardSet.Add(card);
             finalCardSet.Add(card);
         }
-
-        // 5. Shuffle the full deck
         finalCardSet = finalCardSet.OrderBy(x => Random.value).ToList();
 
-        // 6. Clear previous cards
+        // 5. Clear old cards
         foreach (Transform child in cardParent)
             Destroy(child.gameObject);
 
-        // 7. Get parent rect info
-        float spacingX = 20f, spacingY = 20f;
-        float parentWidth = cardParent.rect.width;
-        float parentHeight = cardParent.rect.height;
+        // 6. Configure GridLayoutGroup dynamically
+        GridLayoutGroup grid = cardParent.GetComponent<GridLayoutGroup>();
+        RectTransform parentRect = cardParent.GetComponent<RectTransform>();
 
-        float cardWidth = (parentWidth - (cols - 1) * spacingX) / cols;
-        float cardHeight = (parentHeight - (rows - 1) * spacingY) / rows;
-        float cardSize = Mathf.Min(cardWidth, cardHeight);
+        float spacingX = grid.spacing.x;
+        float spacingY = grid.spacing.y;
+        float paddingX = grid.padding.left + grid.padding.right;
+        float paddingY = grid.padding.top + grid.padding.bottom;
 
-        float gridWidth = cols * cardSize + (cols - 1) * spacingX;
-        float gridHeight = rows * cardSize + (rows - 1) * spacingY;
+        float availableWidth = parentRect.rect.width - paddingX - spacingX * (cols - 1);
+        float availableHeight = parentRect.rect.height - paddingY - spacingY * (rows - 1);
 
-        Vector2 startPos = new Vector2(
-            -gridWidth / 2f + cardSize / 2f,
-            gridHeight / 2f - cardSize / 2f
-        );
+        float cardWidth = availableWidth / cols;
+        float cardHeight = availableHeight / rows;
+        float cardSize = Mathf.Min(cardWidth, cardHeight); // square card layout
 
-        // 8. Spawn the cards
+        grid.cellSize = new Vector2(cardSize, cardSize);
+        grid.constraint = GridLayoutGroup.Constraint.FixedColumnCount;
+        grid.constraintCount = cols;
+
+        // 7. Spawn and animate cards
         allCards.Clear();
-        for (int row = 0; row < rows; row++)
+        for (int i = 0; i < finalCardSet.Count; i++)
         {
-            for (int col = 0; col < cols; col++)
-            {
-                int index = row * cols + col;
-                CardScriptableObject data = finalCardSet[index];
+            CardScriptableObject data = finalCardSet[i];
 
-                Vector2 position = new Vector2(
-                    startPos.x + col * (cardSize + spacingX),
-                    startPos.y - row * (cardSize + spacingY)
-                );
+            GameObject go = Instantiate(cardPrefab, cardParent);
+            RectTransform rt = go.GetComponent<RectTransform>();
+            rt.localScale = Vector3.zero; // start hidden
 
-                GameObject go = Instantiate(cardPrefab, cardParent);
-                RectTransform rt = go.GetComponent<RectTransform>();
-                rt.localPosition = position;
-                rt.sizeDelta = new Vector2(cardSize, cardSize);
+            Card card = go.GetComponent<Card>();
+            card.Init(this, data.id, data.cardImage);
+            allCards.Add(card);
 
-                Card card = go.GetComponent<Card>();
-                card.Init(this, data.id, data.cardImage); // or use card.Init(this, data);
-                allCards.Add(card);
-            }
+            // Animate scale pop-in
+            float delay = i * 0.05f; // stagger each card slightly
+            rt.DOScale(Vector3.one, 0.3f).SetEase(Ease.OutBack).SetDelay(delay);
         }
 
         UpdateScore(0);
@@ -173,7 +167,7 @@ public class GameController : MonoBehaviour
     public void OnCardClicked(Card card)
     {
         if (inputLocked || card == firstCard || card.isMatched) return;
-
+        sm.PlayFlip();
         card.FlipOpen();
         
 
@@ -198,7 +192,7 @@ public class GameController : MonoBehaviour
 
         if (firstCard.cardIndex == secondCard.cardIndex)
         {
-
+            sm.PlayMatch();
             firstCard.MarkMatched();
             secondCard.MarkMatched();
             UpdateScore(score + 1);
@@ -206,7 +200,7 @@ public class GameController : MonoBehaviour
         }
         else
         {
-
+            sm.PlayMismatch();
             firstCard.FlipClose();
             secondCard.FlipClose();
             
