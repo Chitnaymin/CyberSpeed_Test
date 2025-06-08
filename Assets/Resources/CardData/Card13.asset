@@ -12,6 +12,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ef4ae717fe9460940af0c28172ecfed0, type: 3}
   m_Name: Card13
   m_EditorClassIdentifier: 
-  name: Bowling
+  cardName: Bowling
   id: 13
   cardImage: {fileID: 21300000, guid: 854c43e17ee7f7b4fa74ed46e09a1c23, type: 3}

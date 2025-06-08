@@ -12,6 +12,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ef4ae717fe9460940af0c28172ecfed0, type: 3}
   m_Name: Card14
   m_EditorClassIdentifier: 
-  name: Controller
+  cardName: Game
   id: 14
   cardImage: {fileID: 21300000, guid: c2fd743139066464384ba38230bded54, type: 3}

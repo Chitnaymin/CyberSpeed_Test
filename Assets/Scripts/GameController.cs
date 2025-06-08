@@ -13,6 +13,7 @@ public class GameController : MonoBehaviour
     [SerializeField] private GameObject finishUIPanel;
     [SerializeField] private ToggleGroup toggleGroup;
     [SerializeField] private Button btnStart;
+    [SerializeField] private Button btnHome;
     [SerializeField] private Button btnFinish;
     [SerializeField] private RectTransform cardParent;
     [SerializeField] private GameObject cardPrefab;
@@ -69,7 +70,8 @@ public class GameController : MonoBehaviour
         menuUIPanel.GetComponent<RectTransform>().DOAnchorPosY(1080, 0.5f).OnComplete(() =>
         {
             menuUIPanel.SetActive(false);
-            
+            menuUIPanel.GetComponent<RectTransform>().anchoredPosition = new Vector2(0, 0);
+
         });
     }
 
@@ -196,7 +198,12 @@ public class GameController : MonoBehaviour
             firstCard.MarkMatched();
             secondCard.MarkMatched();
             UpdateScore(score + 1);
-            
+            if (allCards.All(c => c.isMatched))
+            {
+                sm.PlayGameOver();
+                HideAllPanels();
+                finishUIPanel.SetActive(true);
+            }
         }
         else
         {

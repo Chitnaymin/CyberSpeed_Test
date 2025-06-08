@@ -841,7 +841,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!224 &762526309
 RectTransform:
   m_ObjectHideFlags: 0
@@ -3114,6 +3114,7 @@ MonoBehaviour:
   finishUIPanel: {fileID: 762526308}
   toggleGroup: {fileID: 1104204358}
   btnStart: {fileID: 79038324}
+  btnHome: {fileID: 0}
   btnFinish: {fileID: 1663126613}
   cardParent: {fileID: 1646097344}
   cardPrefab: {fileID: 6464622330634998760, guid: 25a10fa90087ada41920281498f1612d, type: 3}

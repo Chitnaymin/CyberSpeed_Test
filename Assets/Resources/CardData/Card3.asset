@@ -12,6 +12,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ef4ae717fe9460940af0c28172ecfed0, type: 3}
   m_Name: Card3
   m_EditorClassIdentifier: 
-  name: Apple
+  cardName: Apple
   id: 3
   cardImage: {fileID: 21300000, guid: 45abe480884c9484e834bcfc0503c0f1, type: 3}
